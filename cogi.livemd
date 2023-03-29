@@ -1,0 +1,90 @@
+# Cogi
+
+```elixir
+Mix.install(
+  [
+    {:kino, "~> 0.9.0"},
+    {:openai, "~> 0.4.0"}
+  ],
+  config: [
+    openai: [
+      # find it at https://platform.openai.com/account/api-keys
+      api_key: System.get_env("LB_OPENAI_KEY"),
+      http_options: [recv_timeout: 30_000]
+    ]
+  ]
+)
+```
+
+## Generate the prompt for service
+
+```elixir
+requirements_input =
+  Kino.Input.textarea("Promopts",
+    default:
+      "accept a `name` as request parameter, then response with a json {name: $name, ciao: 'hello'}"
+  )
+```
+
+```elixir
+requirements = Kino.Input.read(requirements_input)
+
+server_template = ~S"""
+defmodule Cogi do
+  use Plug.Builder
+
+  plug(Plug.Logger)
+
+  plug(Plug.Parsers,
+    parsers: [:urlencoded, :json],
+    json_decoder: Jason
+  )
+
+  plug(:cogi_service, upper: true)
+
+  def cogi_service(conn, opts) do
+    {{CODE}}
+  end
+end
+"""
+
+prompt = ~s"""
+You are an expert Elixir programmer, please help me implement a web server that: #{requirements}.
+
+The server is implemented with the 'Plug' library
+Please use 'Jason` as JSON lib
+Please use the following code template, replace '{{CODE}}' with actual implementation.
+Please only return generated code, no comment, no imports.
+Please return only Elixir code.
+
+#{server_template}
+"""
+```
+
+## Ask OpenAI
+
+```elixir
+response =
+  OpenAI.chat_completion(
+    model: "gpt-3.5-turbo",
+    messages: [
+      %{role: "system", content: "You are a helpful assistant."},
+      %{role: "user", content: prompt}
+    ]
+  )
+
+with {:ok, %{choices: choices}} <- response do
+  choice =
+    choices
+    |> List.first()
+
+  %{"message" => %{"content" => content}} = choice
+
+  service_path = Path.join(__DIR__, "service/lib/cogi.ex")
+  File.write(service_path, content)
+
+  {:ok, content}
+end
+```
+
+<!-- livebook:{"offset":1729,"stamp":{"token":"QTEyOEdDTQ.hD67ZKBSYFPoGQZohqkIMZWi0e30eVBua_b-xYuB4iNzgKxz8AycFauiglA.IYAHWwpTp_qbtQ7A.utibm4iEySeVBJbLzDxGkvAXs4RylLEOeWKazf5ptqDux17FR3RyaJEb3CT4yA.frv6UsAUXetlWeF8YHqLnA","version":1}} -->
